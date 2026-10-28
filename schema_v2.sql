@@ -7,7 +7,7 @@
 --    названий категорий без учёта регистра работать не будет (БП-10).
 DO $$
 BEGIN
-    IF lower('ЕДА') <> 'еда' THEN
+    IF lower('ЕДА' COLLATE "ru-x-icu") <> 'еда' THEN
         RAISE EXCEPTION 'lower() не понимает кириллицу (локаль БД). Уникальность без учёта регистра работать не будет.';
     END IF;
 END $$;
@@ -61,8 +61,9 @@ CREATE TABLE category (
 -- БЕЗ учёта регистра и пробелов по краям ("Еда" = "еда" = "еда ").
 -- UNIQUE-констрейнт выражения не принимает, поэтому уникальный индекс.
 -- Индекс начинается с user_id, отдельный индекс на user_id не нужен.
+-- COLLATE "ru-x-icu": при локали БД C lower() не переводит кириллицу в нижний регистр.
 CREATE UNIQUE INDEX category_user_side_name_key
-    ON category (user_id, side, lower(btrim(name)));
+    ON category (user_id, side, lower(btrim(name) COLLATE "ru-x-icu"));
  
 -- БП-13: не больше одной зарплатной категории на пользователя
 CREATE UNIQUE INDEX category_one_salary_per_user

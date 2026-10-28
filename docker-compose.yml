@@ -39,6 +39,9 @@ services:
 
   api:
     build: .
+    # CMD в Dockerfile запускает API и бота вместе (для Amvera), а здесь
+    # они в разных контейнерах, поэтому команду задаём явно.
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
     environment:
       # "db" — имя сервиса выше. Docker сам превращает его в адрес контейнера.

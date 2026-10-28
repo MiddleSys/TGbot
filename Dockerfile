@@ -1,5 +1,6 @@
-# Один образ на API и бота: код и зависимости у них общие, а что именно
-# запускать, задаёт command в docker-compose.yml.
+# Один образ на API и бота: код и зависимости у них общие. Локально что
+# именно запускать, задаёт command в docker-compose.yml; на Amvera
+# работает CMD внизу — оба процесса сразу.
 
 # Базовый образ: Debian + Python 3.14. "slim" — без лишних пакетов,
 # образ получается в разы меньше полного.
@@ -21,10 +22,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api ./api
 COPY bot ./bot
+COPY run.py .
 
 # Запускаем не от root: если в приложении найдут уязвимость, у
 # злоумышленника внутри контейнера будет меньше прав.
 RUN useradd --create-home appuser
 USER appuser
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Команда по умолчанию — API и бот в одном контейнере (так запускает Amvera,
+# см. run.py). docker-compose.yml задаёт каждому сервису свою command.
+CMD ["python", "run.py"]
