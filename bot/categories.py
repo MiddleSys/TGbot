@@ -31,7 +31,7 @@ router = Router()
 
 # Сколько категорий каждого типа может быть у пользователя — всего, вместе
 # с "Зарплатой". Те же числа, что MAX_CATEGORIES в api/db.py.
-MAX_CATEGORIES = {"income": 6, "spend": 6}
+MAX_CATEGORIES = {"income": 8, "spend": 8}
 # Ограничение из API: category.name varchar(20).
 CATEGORY_NAME_MAX_LENGTH = 20
 

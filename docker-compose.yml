@@ -1,0 +1,83 @@
+# Весь проект одной командой:
+#     docker compose up -d --build
+# Остановить (данные базы сохранятся):
+#     docker compose down
+#
+# Значения вида ${POSTGRES_PASSWORD} docker compose берёт из файла .env,
+# который лежит рядом.
+#
+# Каждому сервису передаём только те переменные, которые ему нужны:
+# API не знает токен бота, бот не знает пароль от базы. Общий у них только
+# API_KEY — ключ, которым бот подтверждает API, что запрос от него.
+
+services:
+  db:
+    # Версия зафиксирована: та же, что локально.
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # Данные базы — в именованном томе, а не внутри контейнера:
+      # контейнер можно удалить и пересоздать, данные останутся.
+      - pgdata:/var/lib/postgresql
+      # Скрипты из docker-entrypoint-initdb.d Postgres выполняет один раз,
+      # при самом первом запуске (когда том ещё пустой). Так создаётся схема.
+      - ./schema_v2.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      # pg_isready — готова ли база принимать подключения.
+      # $$ — экранирование: переменную подставит shell внутри контейнера,
+      # а не docker compose.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # ports не указан намеренно: база доступна только другим контейнерам,
+    # из интернета к ней не подключиться.
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      # "db" — имя сервиса выше. Docker сам превращает его в адрес контейнера.
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_SCHEMA: ${POSTGRES_SCHEMA}
+      # ${API_KEY:?...} — если ключа нет в .env, docker compose откажется
+      # запускаться и покажет этот текст. Тот же ключ получает и бот.
+      API_KEY: ${API_KEY:?API_KEY is not set in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Тот же /health, который проверяет и соединение с базой.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # ports тоже не указан: API нужен только боту, наружу его не открываем.
+
+  bot:
+    build: .
+    command: ["python", "-m", "bot.bot"]
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      # "api" — имя сервиса API в этой же сети Docker.
+      API_BASE_URL: http://api:8000
+      API_KEY: ${API_KEY:?API_KEY is not set in .env}
+      # Внутри контейнера 127.0.0.1 — это сам контейнер, а не компьютер,
+      # поэтому прокси для Docker задаётся отдельной переменной. На сервере
+      # за рубежом прокси не нужен — переменную просто не задаём.
+      TELEGRAM_PROXY: ${DOCKER_TELEGRAM_PROXY:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

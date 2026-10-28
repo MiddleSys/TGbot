@@ -25,13 +25,13 @@ import asyncio
 import logging
 import os
 
-import httpx
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 from dotenv import load_dotenv
 
-from bot import categories, history, registration, reports, salary, transactions
+from bot import api_client, categories, history, registration, reports, salary, transactions
 
 # Как и в api/db.py: подгружаем переменные из .env в os.environ.
 load_dotenv()
@@ -41,6 +41,10 @@ load_dotenv()
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 # Например: http://127.0.0.1:8000
 API_BASE_URL = os.environ["API_BASE_URL"]
+# Необязательно. Прокси для запросов к Telegram, например
+# http://127.0.0.1:10809 (локальный VPN-клиент). Нужен, если до
+# api.telegram.org нельзя достучаться напрямую. Требует пакет aiohttp-socks.
+TELEGRAM_PROXY = os.getenv("TELEGRAM_PROXY")
 
 
 async def main() -> None:
@@ -76,7 +80,10 @@ async def main() -> None:
     dp.include_router(transactions.router)
 
     # Bot — клиент Telegram Bot API: через него уходят все запросы к Telegram.
-    bot = Bot(token=BOT_TOKEN)
+    # aiohttp (на нём работает aiogram) сам системный прокси не берёт,
+    # поэтому если задан TELEGRAM_PROXY — передаём его явно через сессию.
+    session = AiohttpSession(proxy=TELEGRAM_PROXY) if TELEGRAM_PROXY else None
+    bot = Bot(token=BOT_TOKEN, session=session)
 
     # set_my_commands() регистрирует список команд бота в Telegram. Клиент
     # показывает его кнопкой "Меню" слева от поля ввода и подсказками при
@@ -87,16 +94,10 @@ async def main() -> None:
         [BotCommand(command="start", description="Главное меню")]
     )
 
-    # AsyncClient — асинхронный HTTP-клиент httpx. Создаём один на всё время
-    # работы бота: он держит открытые соединения с API и переиспользует их
-    # (та же идея, что у пула соединений в api/db.py).
-    #   base_url — общий префикс, чтобы в запросах писать только путь;
-    #   timeout  — сколько секунд ждать ответа, прежде чем сдаться;
-    #   trust_env=False — не брать настройки прокси из системы. Иначе при
-    #               включённом VPN/прокси httpx шлёт даже запросы на
-    #               127.0.0.1 через прокси, а тот отвечает 503.
+    # HTTP-клиент для запросов к API (с ключом API_KEY в заголовке) —
+    # подробности в api_client.create_client.
     # async with гарантирует, что клиент закроет соединения при остановке.
-    async with httpx.AsyncClient(base_url=API_BASE_URL, timeout=10, trust_env=False) as http:
+    async with api_client.create_client(API_BASE_URL) as http:
         # Long polling: бот в цикле спрашивает у Telegram "есть новые
         # сообщения?" и передаёт их диспетчеру. Работает, пока не нажмут Ctrl+C.
         #

@@ -13,9 +13,39 @@
 """
 
 import datetime
+import os
 from decimal import Decimal
 
 import httpx
+
+
+def create_client(base_url: str) -> httpx.AsyncClient:
+    """
+    Создаёт HTTP-клиент для запросов к нашему API. Один на всё время
+    работы бота: он держит открытые соединения с API и переиспользует их
+    (та же идея, что у пула соединений в api/db.py).
+
+      base_url — общий префикс, чтобы в запросах писать только путь;
+      headers  — заголовки для ВСЕХ запросов клиента. X-API-Key — ключ,
+                 без которого API отвечает 401 (см. api/auth.py);
+      timeout  — сколько секунд ждать ответа, прежде чем сдаться;
+      trust_env=False — не брать настройки прокси из системы. Иначе при
+                 включённом VPN/прокси httpx шлёт даже запросы на
+                 127.0.0.1 через прокси, а тот отвечает 503.
+
+    Ключ читаем здесь, а не при импорте модуля: модуль импортируется
+    раньше, чем bot.py вызывает load_dotenv(), и переменной из .env
+    тогда ещё не было бы.
+    """
+    api_key = os.getenv("API_KEY", "")
+    if not api_key:
+        raise RuntimeError("API_KEY is not set: add it to .env (see .env.example)")
+    return httpx.AsyncClient(
+        base_url=base_url,
+        headers={"X-API-Key": api_key},
+        timeout=10,
+        trust_env=False,
+    )
 
 
 async def get_user(http: httpx.AsyncClient, telegram_id: int) -> dict | None:

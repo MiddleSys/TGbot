@@ -12,14 +12,15 @@
 # код после yield — при выходе. Именно такую функцию ждёт lifespan.
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 # Импорт "из пакета api, модуль db". Работает, потому что uvicorn
 # запускается из корня проекта, и Python видит папку api как пакет.
+from api.auth import load_api_key, require_api_key
 from api.db import create_pool
-from api.errors import bad_request
+from api.errors import bad_request, unauthorized
 
 # Заготовка для роутеров. Раскомментируйте, когда в users.py и других
 # файлах появится объект `router = APIRouter(...)`.
@@ -50,6 +51,10 @@ async def lifespan(app: FastAPI):
     # app.state — "хранилище" приложения, куда можно положить любые общие
     # объекты. Из любого эндпоинта пул потом доступен как
     # request.app.state.pool.
+    #
+    # Ключ API читаем первым: если его нет, сервер не стартует (см. auth.py),
+    # и до подключения к базе дело не доходит.
+    app.state.api_key = load_api_key()
     app.state.pool = await create_pool()
     yield
     await app.state.pool.close()
@@ -125,11 +130,20 @@ app.openapi = custom_openapi
 # Подключение роутеров (когда они будут готовы):
 # prefix — общий префикс путей: эндпоинт "/" из users.py станет "/users/".
 # tags — группировка в автодокументации по адресу /docs.
+# dependencies — зависимости, которые выполняются перед КАЖДЫМ эндпоинтом
+#   роутера. require_api_key проверяет заголовок X-API-Key (см. auth.py),
+#   поэтому сами эндпоинты о ключе ничего не знают.
+# responses — описание ответа 401 для /docs, тоже сразу для всех эндпоинтов.
 #
-app.include_router(users.router, prefix="/users", tags=["users"])
-app.include_router(categories.router, prefix="/categories", tags=["categories"])
-app.include_router(transactions.router, prefix="/transactions", tags=["transactions"])
-app.include_router(reports.router, prefix="/reports", tags=["reports"])
+# /health ниже объявлен прямо на app, а не в роутере, — ключ ему не нужен.
+protected = {
+    "dependencies": [Depends(require_api_key)],
+    "responses": {401: unauthorized("invalid or missing API key")},
+}
+app.include_router(users.router, prefix="/users", tags=["users"], **protected)
+app.include_router(categories.router, prefix="/categories", tags=["categories"], **protected)
+app.include_router(transactions.router, prefix="/transactions", tags=["transactions"], **protected)
+app.include_router(reports.router, prefix="/reports", tags=["reports"], **protected)
 
 
 # ---------------------------------------------------------------------------

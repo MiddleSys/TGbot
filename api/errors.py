@@ -16,8 +16,21 @@ def bad_request(example: str) -> dict:
     эндпоинта. На реальные ответы он не влияет: их текст собирает
     обработчик ошибок валидации в main.py.
     """
+    return _error("Bad Request", example)
+
+
+def unauthorized(example: str) -> dict:
+    """
+    То же для ответа 401: нет заголовка X-API-Key или ключ неверный
+    (см. auth.py).
+    """
+    return _error("Unauthorized", example)
+
+
+def _error(description: str, example: str) -> dict:
+    """Общий вид ответа с ошибкой: {"detail": "текст"}."""
     return {
-        "description": "Bad Request",
+        "description": description,
         "content": {
             "application/json": {
                 "schema": {

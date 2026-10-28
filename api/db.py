@@ -60,7 +60,7 @@ SALARY_CATEGORY_NAME = "Зарплата"
 # Сколько категорий каждого типа может быть у пользователя — всего, вместе
 # с "Зарплатой". Часть он придумывает при регистрации, остальные может
 # добавить потом (POST /categories).
-MAX_CATEGORIES = {"income": 6, "spend": 6}
+MAX_CATEGORIES = {"income": 8, "spend": 8}
 
 
 class CategoryLimitError(Exception):
